@@ -1,6 +1,6 @@
-from oauth import oauth
+import urllib2, json
 
-from gwibber.microblog import network, util
+from gwibber.microblog import util
 
 PROTOCOL_INFO = {
   "name": "Google+",
@@ -8,22 +8,15 @@ PROTOCOL_INFO = {
 
   "config": [
     "color",
-    "receive_enabled",
-    "send_enabled",
     "username",
     "access_token",
-    "secret_token",
   ],
 
-  "authtype": "oauth1a",
+  "authtype": "oauth2",
   "color": "#0773DD",
 
   "features": [
     "receive",
-    #"send",
-    #"reply",
-    #"send_thread",
-    #"user_messages",
   ],
 
   "default_streams": [
@@ -34,11 +27,21 @@ PROTOCOL_INFO = {
 URL_PREFIX = "https://www.googleapis.com/plus/v1"
 
 class Client:
-  def __init__(self, acct):
-    self.account = acct
-    self.sigmethod = oauth.OAuthSignatureMethod_HMAC_SHA1()
-    self.consumer = oauth.OAuthConsumer("anonymous", "anonymous")
-    self.token = oauth.OAuthToken(acct["access_token"].encode('ascii'), acct["secret_token"].encode('ascii'))
+  def __init__(self, account):
+    self.service = util.getbus("Service")
+    if account.has_key("secret_token") and account.has_key("password"):
+        account.pop("password")
+    self.account = account
+
+    if (not account.has_key("access_token") and
+        not account.has_key("secret_token")):
+        return [{"error": {
+                    "type": "auth",
+                    "account": self.account,
+                    "message": _("Failed to find credentials")
+                 }}]
+
+    self.token = account["access_token"]
 
   def _actor(self, user):
     return {
@@ -97,28 +100,24 @@ class Client:
 
     return m
 
-  def _get(self, path, collection="items", parse="message", post=False, single=False, body=None, **args):
+  def _get(self, path, collection="items", parse="message", post=False,
+           single=False, body=None, **args):
+
     url = "/".join((URL_PREFIX, path))
-    args.update({"alt": "json"})
     
-    request = oauth.OAuthRequest.from_consumer_and_token(self.consumer, self.token,
-        http_method=post and "POST" or "GET", http_url=url, parameters=util.compact(args))
-    request.sign_request(self.sigmethod, self.consumer, self.token)
-
-    data = network.Download(request.to_url(), None, post,
-        header=["Content-Type: application/json"] if body else None, body=body)
-    
-    data = data.get_json()
-
-    if single: return [getattr(self, "_%s" % parse)(data["data"])]
-    if parse: return [getattr(self, "_%s" % parse)(m) for m in data["data"][collection]]
+    url = url + "?oauth_token=" + self.token
+    print url
+    data = json.load(urllib2.urlopen(url))
+    print data
+    if single: return [getattr(self, "_%s" % parse)(data)]
+    if parse: return [getattr(self, "_%s" % parse)(m) for m in data[collection]]
     else: return []
 
   def __call__(self, opname, **args):
     return getattr(self, opname)(**args)
 
-  #def receive(self, count=util.COUNT, since=None):
-  #  return self._get("/people/me/activities/public")
+  def receive(self, count=util.COUNT, since=None):
+    return self._get("/people/me/activities/public", single=True)
 
   def user_messages(self, id, count=util.COUNT, since=None):
     return self._get("people/%s/activities/public" % id)

@@ -1,10 +1,12 @@
 import gettext
 from gettext import gettext as _
-import gtk, webkit
+import gtk
 import json
 from oauth import oauth
+import pango
 import urllib2
 import urlparse
+import webkit
 
 from gwibber.microblog.util import resources
 
@@ -16,6 +18,11 @@ gtk.gdk.threads_init()
 
 sigmeth = oauth.OAuthSignatureMethod_HMAC_SHA1()
 
+OAUTH_URL = "https://accounts.google.com/o/oauth2/auth"
+CLIENT_ID = "939657648296-rple60h3f0qa1lp78d8g95mdj4nddosf.apps.googleusercontent.com"
+CLIENT_SECRET = "gNxO6p7Vp_XWjqbyGkbBAOaW"
+REDIRECT_URI = "http://gwibber.com/0/auth.html"
+SCOPE = "https://www.googleapis.com/auth/plus.me"
 
 class AccountWidget(gtk.VBox):
   """
@@ -39,7 +46,7 @@ class AccountWidget(gtk.VBox):
 
     if self.account.get("access_token", 0) and self.account.get("username", 0):
       self.ui.get_object("hbox_googleplus_auth").hide()
-      self.ui.get_object("fb_auth_done_label"). \
+      self.ui.get_object("googleplus_auth_done_label"). \
               set_label(_("%s has been authorized by Google+") %
                         self.account["username"])
       self.ui.get_object("hbox_googleplus_auth_done").show()
@@ -55,91 +62,88 @@ class AccountWidget(gtk.VBox):
     web.get_settings().set_property("enable-plugins", False)
     web.load_html_string(_("<p>Please wait...</p>"), "file:///")
 
-    self.consumer = oauth.OAuthConsumer("anonymous", "anonymous")
-
-    params = {
-      "oauth_consumer_key": self.consumer.key,
-      "oauth_timestamp": oauth.generate_timestamp(),
-      "oauth_nonce": oauth.generate_nonce(),
-      "oauth_version": oauth.OAuthRequest.version,
-      "oauth_callback": "http://www.gwibber.com/0/auth.html",
-      "scope": "https://www.googleapis.com/auth/plus.me",
-    }
-
-    request = oauth.OAuthRequest("POST","https://www.google.com/accounts/OAuthGetRequestToken", params)
-    request.sign_request(sigmeth, self.consumer, token=None)
-
-    tokendata = urllib2.urlopen(request.http_url, request.to_postdata()).read()
-    print tokendata
-    self.token = oauth.OAuthToken.from_string(tokendata)
-
-    url = "https://www.google.com/accounts/OAuthAuthorizeToken?oauth_token=" + self.token.key
+    url = '%s?client_id=%s&redirect_uri=%s&scope=%s&response_type=token' % \
+          (OAUTH_URL, CLIENT_ID, REDIRECT_URI, SCOPE)
 
     web.load_uri(url)
-    web.set_size_request(450, 340)
+    web.set_size_request(500, 400)
     web.connect("title-changed", self.on_googleplus_auth_title_change)
 
-    scroll = gtk.ScrolledWindow()
-    scroll.add(web)
+    self.scroll = gtk.ScrolledWindow()
+    self.scroll.add(web)
 
-    self.pack_start(scroll, True, True, 0)
+    self.pack_start(self.scroll, True, True, 0)
     self.show_all()
 
     self.ui.get_object("vbox1").hide()
     self.ui.get_object("vbox_advanced").hide()
+    self.dialog.infobar.set_message_type(gtk.MESSAGE_INFO)
 
   def on_googleplus_auth_title_change(self, web=None, title=None, data=None):
+
     if title.get_title() == "Success":
+      if hasattr(self.dialog, "infobar_content_area"):
+        for child in self.dialog.infobar_content_area.get_children(): child.destroy()
+      self.dialog.infobar_content_area = self.dialog.infobar.get_content_area()
+      self.dialog.infobar_content_area.show()
+      self.dialog.infobar.show()
+
+      message_label = gtk.Label(_("Verifying"))
+      message_label.set_use_markup(True)
+      message_label.set_ellipsize(pango.ELLIPSIZE_END)
+      self.dialog.infobar_content_area.add(message_label)
+      self.dialog.infobar.show_all()
+      self.scroll.hide()
+
+      #Get the access_token from the callback uri (it's formatted as http://gwibber.com/0/auth.html/?code=CODE)
       url = web.get_main_frame().get_uri()
-      data = urlparse.parse_qs(url.split("?", 1)[1])
-      verifier = data["oauth_verifier"][0]
-      self.token.set_verifier(verifier)
+      data = urlparse.parse_qs(url.split("#", 1)[1])
+      self.access_token = data["access_token"][0]
+      self.account["access_token"] = self.access_token
 
-      http_url = "https://www.google.com/accounts/OAuthGetAccessToken"
-      request = oauth.OAuthRequest.from_consumer_and_token(self.consumer,
-                                                           self.token, 
-                                                           verifier=verifier,
-                                                           http_url=http_url)
-      request.sign_request(sigmeth, self.consumer, self.token)
-
-      tokendata = urllib2.urlopen(request.to_url()).read()
-      data = urlparse.parse_qs(tokendata)
-
-      self.account["access_token"] = data["oauth_token"][0]
-      self.account["secret_token"] = data["oauth_token_secret"][0]
-
-      token = oauth.OAuthToken(self.account["access_token"],
-                               self.account["secret_token"])
-
-      http_url = "https://www.googleapis.com/plus/v1/people/me/activities/public"
-      params = {"alt": "json"}
-      request = oauth.OAuthRequest.from_consumer_and_token(self.consumer,
-                                                           token,
-                                                           http_url=http_url,
-                                                           parameters=params)
-      request.sign_request(sigmeth, self.consumer, token)
-
-      print request.to_url()
-      data = json.loads(urllib2.urlopen(request.to_url()).read())["data"]
-      self.account["username"] = data["displayName"]
-      self.account["user_id"] = data["id"]
-
-      self.ui.get_object("hbox_googleplus_auth").hide()
-      label = _("%s has been authorized by Google+") % str(self.account["username"])
-      self.ui.get_object("fb_auth_done_label").set_label(label)
-      self.ui.get_object("hbox_googleplus_auth_done").show()
-      if self.dialog.ui:
-        self.dialog.ui.get_object("vbox_create").show()
-
-      web.hide()
-      self.window.resize(*self.winsize)
       self.ui.get_object("vbox1").show()
       self.ui.get_object("vbox_advanced").show()
 
-    if title.get_title() == "Failure":
-      d = gtk.MessageDialog(None, gtk.DIALOG_MODAL, gtk.MESSAGE_ERROR,
-        gtk.BUTTONS_OK, _("Authorization failed. Please try again."))
-      if d.run(): d.destroy()
+      #Make a request with our new token for the user's own data
+      url = "https://www.googleapis.com/plus/v1/people/me?oauth_token=" + self.access_token
+      data = json.load(urllib2.urlopen(url))
+      print data
+      self.account["username"] = data["displayName"]
+      self.account["user_id"] = data["id"]
 
+      if isinstance(data, dict):
+        if data.has_key("id"):
+          saved = self.dialog.on_edit_account_save()
+        else:
+          print "Failed"
+          self.dialog.infobar.set_message_type(gtk.MESSAGE_ERROR)
+          message_label.set_text(_("Authorization failed. Please try again."))
+      else:
+        print "Failed"
+        self.dialog.infobar.set_message_type(gtk.MESSAGE_ERROR)
+        message_label.set_text(_("Authorization failed. Please try again."))
+
+      if saved:
+        message_label.set_text(_("Successful"))
+        self.dialog.infobar.set_message_type(gtk.MESSAGE_INFO)
+        #self.dialog.infobar.hide()
+
+      self.ui.get_object("hbox_googleplus_auth").hide()
+      self.ui.get_object("googleplus_auth_done_label").set_label(_("%s has been authorized by Google+") % str(self.account["username"]))
+      self.ui.get_object("hbox_googleplus_auth_done").show()
+      if self.dialog.ui and self.account.has_key("id") and not saved:
+        self.dialog.ui.get_object("vbox_save").show()
+      elif self.dialog.ui and not saved:
+        self.dialog.ui.get_object("vbox_create").show()
+
+    self.window.resize(*self.winsize)
+
+    if title.get_title() == "Failure":
       web.hide()
+      self.dialog.infobar.set_message_type(gtk.MESSAGE_ERROR)
+      message_label.set_text(_("Authorization failed. Please try again."))
+      self.dialog.infobar.show_all()
+
+      self.ui.get_object("vbox1").show()
+      self.ui.get_object("vbox_advanced").show()
       self.window.resize(*self.winsize)

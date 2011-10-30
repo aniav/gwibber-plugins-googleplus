@@ -26,7 +26,7 @@
               </packing>
             </child>
             <child>
-              <object class="GtkLabel" id="fb_auth_label">
+              <object class="GtkLabel" id="googleplus_auth_label">
                 <property name="visible">True</property>
                 <property name="label" translatable="yes">Authorize with Google+</property>
               </object>
@@ -43,7 +43,7 @@
           <object class="GtkHBox" id="hbox_googleplus_auth_done">
             <property name="visible">True</property>
             <child>
-              <object class="GtkLabel" id="fb_auth_done_label">
+              <object class="GtkLabel" id="googleplus_auth_done_label">
                 <property name="visible">True</property>
                 <property name="label" translatable="yes">Google+ authorized</property>
               </object>
