@@ -22,7 +22,7 @@ PROTOCOL_INFO = {
   ],
 
   "default_streams": [
-    "receivess",
+    "receive",
   ],
 }
 
