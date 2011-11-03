@@ -24,10 +24,11 @@ CLIENT_SECRET = "gNxO6p7Vp_XWjqbyGkbBAOaW"
 REDIRECT_URI = "http://gwibber.com/0/auth.html"
 SCOPE = "https://www.googleapis.com/auth/plus.me"
 
+
 class AccountWidget(gtk.VBox):
   """
   AccountWidget: A widget that provides a user interface for configuring
-  facebook accounts in Gwibber
+  Google+ accounts in Gwibber
   """
 
   def __init__(self, account=None, dialog=None):
@@ -80,10 +81,10 @@ class AccountWidget(gtk.VBox):
     self.dialog.infobar.set_message_type(gtk.MESSAGE_INFO)
 
   def on_googleplus_auth_title_change(self, web=None, title=None, data=None):
-
     if title.get_title() == "Success":
       if hasattr(self.dialog, "infobar_content_area"):
-        for child in self.dialog.infobar_content_area.get_children(): child.destroy()
+        for child in self.dialog.infobar_content_area.get_children():
+          child.destroy()
       self.dialog.infobar_content_area = self.dialog.infobar.get_content_area()
       self.dialog.infobar_content_area.show()
       self.dialog.infobar.show()
@@ -95,7 +96,8 @@ class AccountWidget(gtk.VBox):
       self.dialog.infobar.show_all()
       self.scroll.hide()
 
-      #Get the access_token from the callback uri (it's formatted as http://gwibber.com/0/auth.html/?code=CODE)
+      # Get the access_token from the callback uri
+      # it's formatted as http://gwibber.com/0/auth.html#access_token=1/QbIbRMWW
       url = web.get_main_frame().get_uri()
       data = urlparse.parse_qs(url.split("#", 1)[1])
       self.access_token = data["access_token"][0]
@@ -104,11 +106,11 @@ class AccountWidget(gtk.VBox):
       self.ui.get_object("vbox1").show()
       self.ui.get_object("vbox_advanced").show()
 
-      #Make a request with our new token for the user's own data
-      url = "https://www.googleapis.com/plus/v1/people/me?oauth_token=" + self.access_token
+      # Make a request with our new token for the user's own data
+      url = "https://www.googleapis.com/plus/v1/people/me?oauth_token=" + \
+            self.access_token
       data = json.load(urllib2.urlopen(url))
-      print data
-      self.account["username"] = data["displayName"]
+      self.account["username"] = str(data["displayName"])
       self.account["user_id"] = data["id"]
 
       if isinstance(data, dict):
@@ -129,7 +131,8 @@ class AccountWidget(gtk.VBox):
         #self.dialog.infobar.hide()
 
       self.ui.get_object("hbox_googleplus_auth").hide()
-      self.ui.get_object("googleplus_auth_done_label").set_label(_("%s has been authorized by Google+") % str(self.account["username"]))
+      label = _("%s has been authorized by Google+") % self.account["username"]
+      self.ui.get_object("googleplus_auth_done_label").set_label(label)
       self.ui.get_object("hbox_googleplus_auth_done").show()
       if self.dialog.ui and self.account.has_key("id") and not saved:
         self.dialog.ui.get_object("vbox_save").show()

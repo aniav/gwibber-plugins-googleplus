@@ -1,9 +1,11 @@
-import urllib2, json
+import json
+import urllib2
 
 from gwibber.microblog import util
+from gwibber.microblog.util import log
 
 PROTOCOL_INFO = {
-  "name": "Google+",
+  "name": "Googleplus",
   "version": "0.1",
 
   "config": [
@@ -20,36 +22,51 @@ PROTOCOL_INFO = {
   ],
 
   "default_streams": [
-    "receive",
+    "receivess",
   ],
 }
 
 URL_PREFIX = "https://www.googleapis.com/plus/v1"
+log.logger.name = "googleplus"
 
 class Client:
-  def __init__(self, account):
+  def __init__(self, acct):
     self.service = util.getbus("Service")
-    if account.has_key("secret_token") and account.has_key("password"):
-        account.pop("password")
-    self.account = account
+    if acct.has_key("access_token") and acct.has_key("password"):
+        acct.pop("password")
+    self.account = acct
 
-    if (not account.has_key("access_token") and
-        not account.has_key("secret_token")):
+
+    if not acct.has_key("access_token"):
         return [{"error": {
                     "type": "auth",
                     "account": self.account,
                     "message": _("Failed to find credentials")
                  }}]
 
-    self.token = account["access_token"]
+    self.token = acct["access_token"]
+    log.logger.debug("init done")
 
   def _actor(self, user):
+    """
+      "actor": {
+        "id": string,
+        "displayName": string,
+        "url": string,
+        "image": {
+          "url": string
+        }
+      }
+    """
+    image = "https://mail.google.com/mail/images/blue_ghost.jpg?sz=45"
+    if user.get('image', None) and user.get('image').get('url', None):
+        image = user.get('image').get('url')
     return {
-        "name": user["name"],
+        "name": user["displayName"],
         "nick": user["id"],
         "id": user["id"],
-        "image": user.get("thumbnailUrl", "https://mail.google.com/mail/images/blue_ghost.jpg?sz=45"),
-        "url": user.get("profileUrl", None),
+        "image": image,
+        "url": user.get("url", None),
         "is_me": user["id"] == self.account["user_id"],
     }
 
@@ -59,9 +76,7 @@ class Client:
         "service": "google+",
         "account": self.account["id"],
         "time": util.parsetime(data["published"]),
-        "url": data.get("links", {})["alternate"][0].get("href", ""),
-        "source": data.get("source", {}).get("title", None),
-        "sender": self._actor(data["actor"]),
+        "url": data.get("url", None),
     }
 
     m["text"] = data["object"]["content"]
@@ -106,9 +121,9 @@ class Client:
     url = "/".join((URL_PREFIX, path))
     
     url = url + "?oauth_token=" + self.token
-    print url
+    log.logger.debug("Url %s" % url)
     data = json.load(urllib2.urlopen(url))
-    print data
+    log.logger.debug("Data %s" % data)
     if single: return [getattr(self, "_%s" % parse)(data)]
     if parse: return [getattr(self, "_%s" % parse)(m) for m in data[collection]]
     else: return []
@@ -116,11 +131,12 @@ class Client:
   def __call__(self, opname, **args):
     return getattr(self, opname)(**args)
 
-  def receive(self, count=util.COUNT, since=None):
-    return self._get("/people/me/activities/public", single=True)
+  def receive(self, since=None):
+    log.logger.debug("Running receive")
+    return self._get("/people/me/activities/public")
 
-  def user_messages(self, id, count=util.COUNT, since=None):
-    return self._get("people/%s/activities/public" % id)
+  #def user_messages(self, id, count=util.COUNT, since=None):
+  #  return self._get("people/%s/activities/public" % id)
 
   # commented out buzz methods that can't be used in Google Plus readonly API
   #def send(self, message):

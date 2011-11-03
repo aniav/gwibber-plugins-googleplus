@@ -1,7 +1,7 @@
 SUBDIRS = icons
-plugindir = $(datadir)/gwibber/plugins/buzz/ui
+plugindir = $(datadir)/gwibber/plugins/googleplus/ui
 plugin_DATA = \
-        gwibber-accounts-buzz.ui
+        gwibber-accounts-googleplus.ui
 
 uninstall-hook:
 	rm -fr $(plugindir)

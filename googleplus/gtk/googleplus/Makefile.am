@@ -1,4 +1,4 @@
-plugindir = $(datadir)/gwibber/plugins/googleplus/gtk/buzz
+plugindir = $(datadir)/gwibber/plugins/googleplus/gtk/googleplus
 plugin_PYTHON = \
         __init__.py
 
